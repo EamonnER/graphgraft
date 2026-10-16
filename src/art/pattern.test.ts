@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parsePattern, patternToTargets } from "./pattern.js";
+import { parsePattern, patternToTargets, tilePattern } from "./pattern.js";
 
 const rows = (...r: string[]) => r.join("\n");
 
@@ -58,5 +58,88 @@ describe("patternToTargets", () => {
     // 2025-12-28 is a Sunday; column 1 row 6 is +13 days.
     const wide = parsePattern(rows("..", "..", "..", "..", "..", "..", ".2"));
     expect(patternToTargets(wide, "2025-12-28")).toEqual({ "2026-01-10": 2 });
+  });
+});
+
+describe("tilePattern", () => {
+  // Two columns wide. 2026-03-01 is a Sunday.
+  // week 0 (Mar 1-7):   column 0 -> Sun = 4, Sat = 1
+  // week 1 (Mar 8-14):  column 1 -> Sun = 2
+  const tile = parsePattern(rows("42", "..", "..", "..", "..", "..", "1."));
+
+  test("repeats the tile every `width` weeks, forward from start", () => {
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-03-01", to: "2026-03-28" })).toEqual({
+      "2026-03-01": 4,
+      "2026-03-07": 1,
+      "2026-03-08": 2,
+      "2026-03-15": 4,
+      "2026-03-21": 1,
+      "2026-03-22": 2,
+    });
+  });
+
+  test("gap weeks between tiles are left alone", () => {
+    // period is 3 weeks: column 0, column 1, one gap week
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-03-01", to: "2026-03-28", gap: 1 })).toEqual({
+      "2026-03-01": 4,
+      "2026-03-07": 1,
+      "2026-03-08": 2,
+      "2026-03-22": 4,
+      "2026-03-28": 1,
+    });
+  });
+
+  test("clips tiles to the start of the range", () => {
+    // Mar 10 is a Tuesday, so the Mar 8 cell is outside the range.
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-03-10", to: "2026-03-28" })).toEqual({
+      "2026-03-15": 4,
+      "2026-03-21": 1,
+      "2026-03-22": 2,
+    });
+  });
+
+  test("clips tiles to the end of the range", () => {
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-03-01", to: "2026-03-16" })).toEqual({
+      "2026-03-01": 4,
+      "2026-03-07": 1,
+      "2026-03-08": 2,
+      "2026-03-15": 4,
+    });
+  });
+
+  test("leaves days before start alone", () => {
+    expect(tilePattern(tile, { start: "2026-03-15", from: "2026-03-01", to: "2026-03-28" })).toEqual({
+      "2026-03-15": 4,
+      "2026-03-21": 1,
+      "2026-03-22": 2,
+    });
+  });
+
+  test("keeps the phase when start is well before the range", () => {
+    // Apr 5 is 5 weeks after start: column 1, then column 0 on Apr 12.
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-04-05", to: "2026-04-18" })).toEqual({
+      "2026-04-05": 2,
+      "2026-04-12": 4,
+      "2026-04-18": 1,
+    });
+  });
+
+  test("a range that ends before start gives nothing", () => {
+    expect(tilePattern(tile, { start: "2026-04-05", from: "2026-03-01", to: "2026-03-28" })).toEqual({});
+  });
+
+  test("over exactly one tile it matches patternToTargets", () => {
+    expect(tilePattern(tile, { start: "2026-03-01", from: "2026-03-01", to: "2026-03-14" })).toEqual(
+      patternToTargets(tile, "2026-03-01"),
+    );
+  });
+
+  test("rejects invalid options", () => {
+    const ok = { start: "2026-03-01", from: "2026-03-01", to: "2026-03-28" };
+    expect(() => tilePattern(tile, { ...ok, start: "2026-03-02" })).toThrow("must be a Sunday");
+    expect(() => tilePattern(tile, { ...ok, to: "2026-02-28" })).toThrow(RangeError);
+    expect(() => tilePattern(tile, { ...ok, gap: -1 })).toThrow("gap");
+    expect(() => tilePattern(tile, { ...ok, gap: 1.5 })).toThrow("gap");
+    expect(() => tilePattern(tile, { ...ok, from: "nope" })).toThrow(RangeError);
   });
 });
