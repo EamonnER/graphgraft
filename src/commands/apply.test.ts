@@ -93,6 +93,34 @@ describe("runApply", () => {
     });
   });
 
+  test("says the repo has everything when it holds all the planned art", async () => {
+    await runApply(options, depsFor(repo));
+    const report = await runApply(options, depsFor(repo));
+    expect(report).toContain("the art repo already has everything this plan needs");
+    expect(report).not.toContain("without any art commits");
+  });
+
+  test("when the graph already matches but the repo has no art, it does not claim the repo has the art", async () => {
+    // Ghost art: the calendar shows the pattern, but this repo's log has no art commits.
+    const ghostCalendar = {
+      ...depsFor(repo),
+      fetchCalendar: async ({ from, to }: { from: string; to: string }) => {
+        const calendar: DayCounts = {};
+        for (let ms = parseDate(from); ms <= parseDate(to); ms += DAY_MS) calendar[formatDate(ms)] = 0;
+        Object.assign(calendar, { "2026-03-01": 4, "2026-03-02": 3, "2026-03-03": 2, "2026-03-04": 1 });
+        return calendar;
+      },
+    } as unknown as ApplyDeps;
+
+    const report = await runApply(options, ghostCalendar);
+
+    expect(report).toContain("Commits to add: 0");
+    expect(report).toContain("without any art commits from this repo");
+    expect(report).toContain("still be showing art");
+    expect(report).not.toContain("already has everything");
+    expect(await countArtCommits(repo)).toEqual({});
+  });
+
   test("writes only the difference from art already in the repo", async () => {
     await writeArtCommits(repo, { "2026-03-01": 2 }, identity);
     const report = await runApply(options, depsFor(repo));

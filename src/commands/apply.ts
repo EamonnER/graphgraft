@@ -57,7 +57,14 @@ export async function runApply(options: ApplyOptions, deps: ApplyDeps = realDeps
 
   const report = (note?: string) => formatPlanReport(options, result, note);
   if (total === 0) {
-    return `${report()}\n\nNothing to add: the art repo already has everything this plan needs.`;
+    // Nothing planned at all means the graph already matches without any art from this repo: it
+    // is either real activity or leftover art GitHub still shows from a removed repo.
+    const message =
+      Object.keys(result.plan.planned).length > 0
+        ? "Nothing to add: the art repo already has everything this plan needs."
+        : "Nothing to add: the graph already shows this pattern without any art commits from this repo.\n" +
+          "If you expected an empty graph, GitHub may still be showing art from a repo that was removed or rewritten.";
+    return `${report()}\n\n${message}`;
   }
   if (!yes) {
     return `${report()}\n\nRe-run with --yes to write ${total} commits to ${artRepo} (not pushed).`;
