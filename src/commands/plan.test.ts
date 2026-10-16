@@ -88,6 +88,64 @@ describe("runPlan", () => {
     );
   });
 
+  test("--repeat tiles the pattern across the whole range", async () => {
+    const { deps } = fakeDeps();
+    const report = await runPlan({ ...base, patternText: column("4"), repeat: true }, deps);
+
+    expect(report).toContain("Pattern: 3 cells placed from 2026-03-01, repeating every 1 week\n");
+    expect(report).not.toContain("skipped");
+    expect(report).toContain("Commits to add: 3 over 3 days");
+    expect(report).toContain("Predicted graph:\n444\n...\n...\n...\n...\n...\n...");
+  });
+
+  test("--gap leaves blank weeks between tiles", async () => {
+    const { deps } = fakeDeps();
+    const report = await runPlan({ ...base, patternText: column("4"), repeat: true, gap: 1 }, deps);
+
+    expect(report).toContain("2 cells placed from 2026-03-01, repeating every 2 weeks");
+    expect(report).toContain("Predicted graph:\n4.4\n");
+  });
+
+  test("tiling starts at --start and leaves earlier days alone", async () => {
+    const { deps } = fakeDeps();
+    const report = await runPlan({ ...base, start: "2026-03-08", patternText: column("4"), repeat: true }, deps);
+    expect(report).toContain("2 cells placed from 2026-03-08");
+    expect(report).toContain("Predicted graph:\n.44\n");
+  });
+
+  test("gap without repeat is rejected before calling GitHub", async () => {
+    const { deps, fetchCalendar } = fakeDeps();
+    await expect(runPlan({ ...base, gap: 1 }, deps)).rejects.toThrow("gap only makes sense");
+    expect(fetchCalendar).not.toHaveBeenCalled();
+  });
+
+  describe("conflict list cap", () => {
+    // Every day in 2026-03-01..2026-03-28 has 1 real commit; an all-zero pattern wants them empty.
+    const busyDays = Object.fromEntries(
+      Array.from({ length: 28 }, (_, i) => [`2026-03-${String(i + 1).padStart(2, "0")}`, 1]),
+    );
+    const allZero = Array(7).fill("0000").join("\n");
+
+    test("lists the first 20 conflicts and summarises the rest", async () => {
+      const { deps } = fakeDeps(busyDays);
+      const report = await runPlan({ ...base, to: "2026-03-28", patternText: allZero }, deps);
+
+      expect(report).toContain("Conflicts: 28\n");
+      expect(report.match(/wanted level 0/g)).toHaveLength(20);
+      expect(report).toContain("  ... and 8 more");
+    });
+
+    test("prints every conflict when there are 20 or fewer", async () => {
+      const { deps } = fakeDeps(busyDays);
+      const twenty = Array(7).fill("000").join("\n") + "\n"; // 21 cells; drop one below
+      const report = await runPlan({ ...base, to: "2026-03-28", patternText: twenty.replace("000\n", "00.\n") }, deps);
+
+      expect(report).toContain("Conflicts: 20\n");
+      expect(report.match(/wanted level 0/g)).toHaveLength(20);
+      expect(report).not.toContain("more");
+    });
+  });
+
   test("rejects a bad pattern or start before calling GitHub", async () => {
     const { deps, fetchCalendar } = fakeDeps();
     await expect(runPlan({ ...base, patternText: "44\n44" }, deps)).rejects.toThrow("exactly 7 rows");

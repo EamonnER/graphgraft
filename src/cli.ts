@@ -28,6 +28,8 @@ async function main(): Promise<void> {
     start: args.start,
     ...(args.artRepo !== undefined && { artRepo: args.artRepo }),
     ...(args.maxPerDay !== undefined && { maxPerDay: args.maxPerDay }),
+    ...(args.repeat && { repeat: true }),
+    ...(args.gap !== undefined && { gap: args.gap }),
   };
 
   if (command === "plan") {

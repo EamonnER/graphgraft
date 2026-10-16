@@ -6,17 +6,21 @@ export class UsageError extends Error {}
 export const USAGE = `Usage:
   graphgraft plan  --login <user> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
                    --pattern <file> --start <YYYY-MM-DD> [--art-repo <path>] [--max-per-day <n>]
+                   [--repeat [--gap <weeks>]]
 
   graphgraft apply --login <user> --from <YYYY-MM-DD> --to <YYYY-MM-DD>
                    --pattern <file> --start <YYYY-MM-DD> --art-repo <path>
                    --name <author name> --email <author email>
-                   [--branch <name>] [--max-per-day <n>] [--yes]
+                   [--branch <name>] [--max-per-day <n>] [--repeat [--gap <weeks>]] [--yes]
 
   graphgraft clean --repo <owner/name> --art-repo <path> [--confirm <owner/name>] [--yes]
 
 plan:  dry run. Shows the commits needed to draw the pattern. Nothing is written.
 apply: like plan, and with --yes adds the missing art commits to the art repo.
        Without --yes it writes nothing. It never pushes.
+--repeat tiles the pattern across the whole date range, forward from --start; --gap adds blank
+weeks between tiles.
+
 clean: permanently deletes the art repo on GitHub (the only way to remove art from your graph).
        Without --yes it only checks. To delete, pass --yes and --confirm with the same owner/name.
        Needs a token with the delete_repo scope.
@@ -32,6 +36,10 @@ export interface PlanArgs {
   start: string;
   artRepo?: string;
   maxPerDay?: number;
+  /** Tile the pattern across the whole date range. */
+  repeat?: boolean;
+  /** Blank weeks between tiles (only with `repeat`). */
+  gap?: number;
 }
 
 export interface ApplyArgs extends PlanArgs {
@@ -57,7 +65,7 @@ export type Command =
 
 type CommandName = Command["command"];
 
-const PLAN_OPTIONS = ["login", "from", "to", "pattern", "start", "art-repo", "max-per-day"];
+const PLAN_OPTIONS = ["login", "from", "to", "pattern", "start", "art-repo", "max-per-day", "repeat", "gap"];
 const ALLOWED: Record<CommandName, string[]> = {
   plan: PLAN_OPTIONS,
   apply: [...PLAN_OPTIONS, "name", "email", "branch", "yes"],
@@ -80,6 +88,8 @@ function parseRaw(argv: string[], command: CommandName) {
         start: { type: "string" },
         "art-repo": { type: "string" },
         "max-per-day": { type: "string" },
+        repeat: { type: "boolean" },
+        gap: { type: "string" },
         name: { type: "string" },
         email: { type: "string" },
         branch: { type: "string" },
@@ -127,6 +137,17 @@ function parseCommon(values: ReturnType<typeof parseRaw>): PlanArgs {
       throw new UsageError(`--max-per-day must be a positive integer, got ${values["max-per-day"]}`);
     }
     args.maxPerDay = n;
+  }
+  if (values.repeat) args.repeat = true;
+  if (values.gap !== undefined) {
+    if (!values.repeat) {
+      throw new UsageError("--gap only makes sense together with --repeat");
+    }
+    const n = Number(values.gap);
+    if (values.gap.trim() === "" || !Number.isInteger(n) || n < 0) {
+      throw new UsageError(`--gap must be a non-negative integer, got ${values.gap}`);
+    }
+    args.gap = n;
   }
   return args;
 }

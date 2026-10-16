@@ -44,6 +44,24 @@ describe("parsePlanArgs", () => {
     expect(() => parsePlanArgs([...required, "--name", "x"])).toThrow(UsageError);
   });
 
+  test("parses --repeat and --gap", () => {
+    expect(parsePlanArgs([...required, "--repeat"]).repeat).toBe(true);
+    expect(parsePlanArgs([...required, "--repeat"]).gap).toBeUndefined();
+    const args = parsePlanArgs([...required, "--repeat", "--gap", "2"]);
+    expect(args.repeat).toBe(true);
+    expect(args.gap).toBe(2);
+    expect(parsePlanArgs([...required, "--repeat", "--gap", "0"]).gap).toBe(0);
+  });
+
+  test("rejects --gap without --repeat, and an invalid gap", () => {
+    expect(() => parsePlanArgs([...required, "--gap", "2"])).toThrow("--gap only makes sense together with --repeat");
+    for (const bad of ["-1", "1.5", "abc", ""]) {
+      expect(() => parsePlanArgs([...required, "--repeat", `--gap=${bad}`])).toThrow("--gap must be");
+    }
+    // Node's own parser refuses a value that looks like an option.
+    expect(() => parsePlanArgs([...required, "--repeat", "--gap", "-1"])).toThrow(UsageError);
+  });
+
   test("rejects clean-only options", () => {
     expect(() => parsePlanArgs([...required, "--repo", "a/b"])).toThrow('--repo not valid for "plan"');
   });
@@ -70,6 +88,7 @@ describe("parseCleanArgs", () => {
   test("rejects options from other commands", () => {
     expect(() => parseCleanArgs([...clean, "--login", "x"])).toThrow('--login not valid for "clean"');
     expect(() => parseCleanArgs([...clean, "--name", "x"])).toThrow(UsageError);
+    expect(() => parseCleanArgs([...clean, "--repeat"])).toThrow('--repeat not valid for "clean"');
   });
 });
 
@@ -96,6 +115,12 @@ describe("parseApplyArgs", () => {
     expect(args.yes).toBe(true);
     expect(args.branch).toBe("art");
     expect(args.maxPerDay).toBe(30);
+  });
+
+  test("accepts --repeat and --gap", () => {
+    const args = parseApplyArgs([...withArt, "--repeat", "--gap", "1"]);
+    expect(args.repeat).toBe(true);
+    expect(args.gap).toBe(1);
   });
 
   test("requires the art repo, name and email", () => {

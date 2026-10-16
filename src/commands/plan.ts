@@ -1,4 +1,4 @@
-import { parsePattern, patternToTargets } from "../art/pattern.js";
+import { parsePattern, patternToTargets, tilePattern } from "../art/pattern.js";
 import { renderGraph } from "../art/render.js";
 import { fetchCalendar as realFetchCalendar } from "../github/calendar.js";
 import { countArtCommits as realCountArtCommits } from "../git/artCommits.js";
@@ -18,7 +18,14 @@ export interface PlanOptions {
   /** Local art repo, used to separate our own commits from real ones. */
   artRepo?: string;
   maxPerDay?: number;
+  /** Tile the pattern across the whole date range, forward from `start`. */
+  repeat?: boolean;
+  /** Blank weeks between tiles. Only with `repeat`. */
+  gap?: number;
 }
+
+/** Longest conflict list printed in a report; the rest are summarised. */
+const MAX_CONFLICT_LINES = 20;
 
 /** The outside world, injectable for tests. */
 export interface PlanDeps {
@@ -42,6 +49,8 @@ export interface PlanResult {
   cellsPlaced: number;
   /** Pattern cells outside the date range, which were skipped. */
   cellsSkipped: number;
+  /** With `repeat`: how many weeks apart the tiles start (pattern width plus gap). */
+  tileWeeks?: number;
 }
 
 /**
@@ -52,7 +61,14 @@ export async function computePlan(options: PlanOptions, deps: PlanDeps = realDep
   const { login, token, from, to, start, artRepo } = options;
 
   // Validate the local inputs before touching the network.
-  const targets = patternToTargets(parsePattern(options.patternText), start);
+  if (options.gap !== undefined && !options.repeat) {
+    throw new RangeError("gap only makes sense together with repeat");
+  }
+  const pattern = parsePattern(options.patternText);
+  const targets = options.repeat
+    ? tilePattern(pattern, { start, from, to, ...(options.gap !== undefined && { gap: options.gap }) })
+    : patternToTargets(pattern, start);
+  const tileWeeks = options.repeat ? (pattern[0]?.length ?? 0) + (options.gap ?? 0) : undefined;
 
   const calendar = await deps.fetchCalendar({ login, token, from, to });
   const art = artRepo ? await deps.countArtCommits(artRepo) : {};
@@ -81,6 +97,7 @@ export async function computePlan(options: PlanOptions, deps: PlanDeps = realDep
     predicted: simulate(baseline, plan.planned),
     cellsPlaced: Object.keys(inRange).length,
     cellsSkipped: Object.keys(targets).length - Object.keys(inRange).length,
+    ...(tileWeeks !== undefined && { tileWeeks }),
   };
 }
 
@@ -91,7 +108,7 @@ export function formatPlanReport(
   note = "dry run: nothing was written",
 ): string {
   const { login, from, to, start, artRepo } = options;
-  const { plan, current, predicted, cellsPlaced, cellsSkipped } = result;
+  const { plan, current, predicted, cellsPlaced, cellsSkipped, tileWeeks } = result;
 
   const added = Object.values(plan.planned);
   const total = added.reduce((sum, n) => sum + n, 0);
@@ -99,6 +116,7 @@ export function formatPlanReport(
   const lines = [
     `Plan for ${login}, ${from} to ${to} (${note})`,
     `Pattern: ${cellsPlaced} cells placed from ${start}` +
+      (tileWeeks !== undefined ? `, repeating every ${tileWeeks} week${tileWeeks === 1 ? "" : "s"}` : "") +
       (cellsSkipped > 0 ? `, ${cellsSkipped} skipped (outside ${from} to ${to})` : ""),
     `Commits to add: ${total} over ${added.length} day${added.length === 1 ? "" : "s"}` +
       ` (most on one day: ${Math.max(0, ...added)})`,
@@ -108,8 +126,11 @@ export function formatPlanReport(
     lines.push("Conflicts: none");
   } else {
     lines.push(`Conflicts: ${plan.conflicts.length}`);
-    for (const c of plan.conflicts) {
+    for (const c of plan.conflicts.slice(0, MAX_CONFLICT_LINES)) {
       lines.push(`  ${c.date}: wanted level ${c.target}, would be level ${c.actual}`);
+    }
+    if (plan.conflicts.length > MAX_CONFLICT_LINES) {
+      lines.push(`  ... and ${plan.conflicts.length - MAX_CONFLICT_LINES} more`);
     }
   }
   if (!artRepo) {
