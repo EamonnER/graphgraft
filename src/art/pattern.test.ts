@@ -18,6 +18,13 @@ describe("parsePattern", () => {
     expect(parsePattern(text)).toHaveLength(7);
   });
 
+  test("ignores a leading byte-order mark", () => {
+    const text = rows("01", "2.", "34", "..", "..", "..", "1.");
+    expect(parsePattern("﻿" + text)).toEqual(parsePattern(text));
+    // only a leading one: a BOM elsewhere is still an invalid character
+    expect(() => parsePattern(text.replace("34", "﻿4"))).toThrow("invalid character");
+  });
+
   test("requires exactly 7 rows", () => {
     expect(() => parsePattern(rows("0", "0", "0"))).toThrow("exactly 7 rows, got 3");
     expect(() => parsePattern("")).toThrow(RangeError);

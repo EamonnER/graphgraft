@@ -10,10 +10,12 @@ const ROWS = 7;
 /**
  * Parse a pattern from text: 7 rows of equal length, one character per day.
  * `0` = must stay empty, `1`-`4` = target level, `.` = don't care.
- * Blank lines and trailing whitespace are ignored.
+ * Blank lines, trailing whitespace and a leading byte-order mark (which Windows editors
+ * often add) are ignored.
  */
 export function parsePattern(text: string): Pattern {
   const lines = text
+    .replace(/^﻿/, "")
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter((line) => line !== "");
