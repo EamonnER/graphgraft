@@ -96,7 +96,37 @@ The report shows the commits to add, any conflicts, and the **current** and **pr
 - The date range can be at most one year (a GitHub API limit).
 
 **Conflicts** are days that can't be made to match: real commits are already too bright for the target shade (or the
-day should be empty but has commits). Those days are left alone.
+day should be empty but has commits). Those days are left alone. The report lists the first 20 conflicts and
+summarises the rest ("... and N more"); the count at the top is always exact.
+
+#### Repeating a pattern
+
+`--repeat` tiles the pattern across the whole `--from`/`--to` range instead of placing it once. It works with both
+`plan` and `apply`.
+
+```powershell
+node dist/cli.js plan --login <user> --from 2026-04-05 --to 2026-09-26 `
+  --pattern examples/stripes.txt --start 2026-04-05 --art-repo ../commit-art --repeat
+```
+
+- The tile repeats every *width* weeks, **forward from `--start`**. Days before `--start` are left alone, and the last
+  tile is clipped at `--to`. If `--start` is earlier than `--from`, the pattern still begins at `--start`, so you can
+  choose where in the tile the range begins.
+- `--gap <weeks>` (only with `--repeat`) adds blank weeks between tiles, so the tile repeats every *width + gap* weeks.
+  Gap days are "don't care": they are left alone, not forced empty.
+- Tiling over a long range creates many cells, so it needs more commits and is more likely to run into your real
+  commits. Check the total and the conflicts in the dry run first, and prefer patterns with plenty of `.` cells.
+- Small tiles are fine. `examples/stripes.txt` is a 4-week-wide zigzag:
+
+  ```
+  4...
+  .3..
+  ..2.
+  ...1
+  ..2.
+  .3..
+  4...
+  ```
 
 ### `apply`: write the commits locally
 
