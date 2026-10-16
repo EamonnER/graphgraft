@@ -12,9 +12,14 @@ export const USAGE = `Usage:
                    --name <author name> --email <author email>
                    [--branch <name>] [--max-per-day <n>] [--yes]
 
+  graphgraft clean --repo <owner/name> --art-repo <path> [--confirm <owner/name>] [--yes]
+
 plan:  dry run. Shows the commits needed to draw the pattern. Nothing is written.
 apply: like plan, and with --yes adds the missing art commits to the art repo.
        Without --yes it writes nothing. It never pushes.
+clean: permanently deletes the art repo on GitHub (the only way to remove art from your graph).
+       Without --yes it only checks. To delete, pass --yes and --confirm with the same owner/name.
+       Needs a token with the delete_repo scope.
 
 The GitHub token is read from the GITHUB_TOKEN environment variable.`;
 
@@ -37,12 +42,31 @@ export interface ApplyArgs extends PlanArgs {
   yes: boolean;
 }
 
-export type Command = { command: "plan"; args: PlanArgs } | { command: "apply"; args: ApplyArgs };
+export interface CleanArgs {
+  /** The GitHub repo to delete, `owner/name`. */
+  repo: string;
+  artRepo: string;
+  confirm?: string;
+  yes: boolean;
+}
+
+export type Command =
+  | { command: "plan"; args: PlanArgs }
+  | { command: "apply"; args: ApplyArgs }
+  | { command: "clean"; args: CleanArgs };
+
+type CommandName = Command["command"];
+
+const PLAN_OPTIONS = ["login", "from", "to", "pattern", "start", "art-repo", "max-per-day"];
+const ALLOWED: Record<CommandName, string[]> = {
+  plan: PLAN_OPTIONS,
+  apply: [...PLAN_OPTIONS, "name", "email", "branch", "yes"],
+  clean: ["repo", "art-repo", "confirm", "yes"],
+};
 
 const REQUIRED = ["login", "from", "to", "pattern", "start"] as const;
-const APPLY_ONLY = ["name", "email", "branch", "yes"] as const;
 
-function parseRaw(argv: string[], command: "plan" | "apply") {
+function parseRaw(argv: string[], command: CommandName) {
   let parsed;
   try {
     parsed = parseArgs({
@@ -59,6 +83,8 @@ function parseRaw(argv: string[], command: "plan" | "apply") {
         name: { type: "string" },
         email: { type: "string" },
         branch: { type: "string" },
+        repo: { type: "string" },
+        confirm: { type: "string" },
         yes: { type: "boolean" },
       },
     });
@@ -70,14 +96,22 @@ function parseRaw(argv: string[], command: "plan" | "apply") {
   if (positionals.length !== 1 || positionals[0] !== command) {
     throw new UsageError(`expected the command "${command}"`);
   }
+  const misplaced = Object.keys(values).filter((option) => !ALLOWED[command].includes(option));
+  if (misplaced.length > 0) {
+    throw new UsageError(`${misplaced.map((m) => `--${m}`).join(", ")} not valid for "${command}"`);
+  }
   return values;
 }
 
-function parseCommon(values: ReturnType<typeof parseRaw>): PlanArgs {
-  const missing = REQUIRED.filter((name) => !values[name]);
+function missingOptions(values: ReturnType<typeof parseRaw>, names: readonly string[]): void {
+  const missing = names.filter((name) => !(values as Record<string, unknown>)[name]);
   if (missing.length > 0) {
     throw new UsageError(`missing required option(s): ${missing.map((m) => `--${m}`).join(", ")}`);
   }
+}
+
+function parseCommon(values: ReturnType<typeof parseRaw>): PlanArgs {
+  missingOptions(values, REQUIRED);
 
   const args: PlanArgs = {
     login: values.login!,
@@ -99,23 +133,14 @@ function parseCommon(values: ReturnType<typeof parseRaw>): PlanArgs {
 
 /** Parse the arguments of `graphgraft plan ...` (everything after the program name). */
 export function parsePlanArgs(argv: string[]): PlanArgs {
-  const values = parseRaw(argv, "plan");
-  const misplaced = APPLY_ONLY.filter((name) => values[name] !== undefined);
-  if (misplaced.length > 0) {
-    throw new UsageError(`${misplaced.map((m) => `--${m}`).join(", ")} only apply to the "apply" command`);
-  }
-  return parseCommon(values);
+  return parseCommon(parseRaw(argv, "plan"));
 }
 
 /** Parse the arguments of `graphgraft apply ...` (everything after the program name). */
 export function parseApplyArgs(argv: string[]): ApplyArgs {
   const values = parseRaw(argv, "apply");
   const common = parseCommon(values);
-
-  const missing = (["art-repo", "name", "email"] as const).filter((name) => !values[name]);
-  if (missing.length > 0) {
-    throw new UsageError(`missing required option(s): ${missing.map((m) => `--${m}`).join(", ")}`);
-  }
+  missingOptions(values, ["art-repo", "name", "email"]);
 
   const args: ApplyArgs = {
     ...common,
@@ -128,6 +153,20 @@ export function parseApplyArgs(argv: string[]): ApplyArgs {
   return args;
 }
 
+/** Parse the arguments of `graphgraft clean ...` (everything after the program name). */
+export function parseCleanArgs(argv: string[]): CleanArgs {
+  const values = parseRaw(argv, "clean");
+  missingOptions(values, ["repo", "art-repo"]);
+
+  const args: CleanArgs = {
+    repo: values.repo!,
+    artRepo: values["art-repo"]!,
+    yes: values.yes === true,
+  };
+  if (values.confirm) args.confirm = values.confirm;
+  return args;
+}
+
 /** Parse the whole command line, choosing the command from the first argument. */
 export function parseCommand(argv: string[]): Command {
   switch (argv[0]) {
@@ -135,7 +174,9 @@ export function parseCommand(argv: string[]): Command {
       return { command: "plan", args: parsePlanArgs(argv) };
     case "apply":
       return { command: "apply", args: parseApplyArgs(argv) };
+    case "clean":
+      return { command: "clean", args: parseCleanArgs(argv) };
     default:
-      throw new UsageError(`expected a command: "plan" or "apply"`);
+      throw new UsageError(`expected a command: "plan", "apply" or "clean"`);
   }
 }

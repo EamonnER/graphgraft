@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseApplyArgs, parseCommand, parsePlanArgs, UsageError } from "./args.js";
+import { parseApplyArgs, parseCleanArgs, parseCommand, parsePlanArgs, UsageError } from "./args.js";
 
 const required = ["plan", "--login", "octocat", "--from", "2026-03-01", "--to", "2026-05-30", "--pattern", "p.txt", "--start", "2026-03-01"];
 
@@ -40,8 +40,36 @@ describe("parsePlanArgs", () => {
   });
 
   test("rejects apply-only options", () => {
-    expect(() => parsePlanArgs([...required, "--yes"])).toThrow('only apply to the "apply" command');
+    expect(() => parsePlanArgs([...required, "--yes"])).toThrow('--yes not valid for "plan"');
     expect(() => parsePlanArgs([...required, "--name", "x"])).toThrow(UsageError);
+  });
+
+  test("rejects clean-only options", () => {
+    expect(() => parsePlanArgs([...required, "--repo", "a/b"])).toThrow('--repo not valid for "plan"');
+  });
+});
+
+describe("parseCleanArgs", () => {
+  const clean = ["clean", "--repo", "octocat/commit-art", "--art-repo", "../commit-art"];
+
+  test("parses the required options, with --yes off by default", () => {
+    expect(parseCleanArgs(clean)).toEqual({ repo: "octocat/commit-art", artRepo: "../commit-art", yes: false });
+  });
+
+  test("parses --confirm and --yes", () => {
+    const args = parseCleanArgs([...clean, "--confirm", "octocat/commit-art", "--yes"]);
+    expect(args.confirm).toBe("octocat/commit-art");
+    expect(args.yes).toBe(true);
+  });
+
+  test("requires --repo and --art-repo", () => {
+    expect(() => parseCleanArgs(["clean"])).toThrow("--repo, --art-repo");
+    expect(() => parseCleanArgs(["clean", "--repo", "a/b"])).toThrow("--art-repo");
+  });
+
+  test("rejects options from other commands", () => {
+    expect(() => parseCleanArgs([...clean, "--login", "x"])).toThrow('--login not valid for "clean"');
+    expect(() => parseCleanArgs([...clean, "--name", "x"])).toThrow(UsageError);
   });
 });
 
@@ -85,6 +113,7 @@ describe("parseCommand", () => {
     expect(parseCommand(required).command).toBe("plan");
     const apply = ["apply", ...required.slice(1), "--art-repo", "a", "--name", "n", "--email", "e"];
     expect(parseCommand(apply).command).toBe("apply");
+    expect(parseCommand(["clean", "--repo", "a/b", "--art-repo", "x"]).command).toBe("clean");
   });
 
   test("rejects a missing or unknown command", () => {
