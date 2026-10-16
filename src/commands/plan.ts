@@ -56,7 +56,18 @@ export async function computePlan(options: PlanOptions, deps: PlanDeps = realDep
 
   const calendar = await deps.fetchCalendar({ login, token, from, to });
   const art = artRepo ? await deps.countArtCommits(artRepo) : {};
-  const baseline = baselineCounts(calendar, art);
+  let baseline: DayCounts;
+  try {
+    baseline = baselineCounts(calendar, art);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw new RangeError(
+        `${error.message}. If the art repo has commits you haven't pushed yet, push it, ` +
+          "wait for GitHub to refresh your graph, then run again.",
+      );
+    }
+    throw error;
+  }
 
   const inRange = Object.fromEntries(Object.entries(targets).filter(([date]) => date in baseline));
 
@@ -73,8 +84,12 @@ export async function computePlan(options: PlanOptions, deps: PlanDeps = realDep
   };
 }
 
-/** Describe a computed plan as text. */
-export function formatPlanReport(options: PlanOptions, result: PlanResult): string {
+/** Describe a computed plan as text. `note` goes in the heading. */
+export function formatPlanReport(
+  options: PlanOptions,
+  result: PlanResult,
+  note = "dry run: nothing was written",
+): string {
   const { login, from, to, start, artRepo } = options;
   const { plan, current, predicted, cellsPlaced, cellsSkipped } = result;
 
@@ -82,7 +97,7 @@ export function formatPlanReport(options: PlanOptions, result: PlanResult): stri
   const total = added.reduce((sum, n) => sum + n, 0);
 
   const lines = [
-    `Plan for ${login}, ${from} to ${to} (dry run: nothing was written)`,
+    `Plan for ${login}, ${from} to ${to} (${note})`,
     `Pattern: ${cellsPlaced} cells placed from ${start}` +
       (cellsSkipped > 0 ? `, ${cellsSkipped} skipped (outside ${from} to ${to})` : ""),
     `Commits to add: ${total} over ${added.length} day${added.length === 1 ? "" : "s"}` +

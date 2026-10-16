@@ -80,6 +80,14 @@ describe("runPlan", () => {
     expect(report).not.toContain("secret-token");
   });
 
+  test("explains an art/calendar mismatch as an unpushed art repo", async () => {
+    // The art repo has 4 commits on Mar 1 that GitHub's calendar doesn't count yet.
+    const { deps } = fakeDeps({}, { "2026-03-01": 4 });
+    await expect(runPlan({ ...base, artRepo: "../art" }, deps)).rejects.toThrow(
+      /2026-03-01: 4 art commits but the calendar only counts 0.*push it/,
+    );
+  });
+
   test("rejects a bad pattern or start before calling GitHub", async () => {
     const { deps, fetchCalendar } = fakeDeps();
     await expect(runPlan({ ...base, patternText: "44\n44" }, deps)).rejects.toThrow("exactly 7 rows");

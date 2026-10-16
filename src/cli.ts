@@ -1,27 +1,41 @@
 import { readFile } from "node:fs/promises";
-import { parsePlanArgs, USAGE, UsageError } from "./cli/args.js";
+import { parseCommand, USAGE, UsageError } from "./cli/args.js";
+import { runApply } from "./commands/apply.js";
 import { runPlan } from "./commands/plan.js";
 
 async function main(): Promise<void> {
-  const args = parsePlanArgs(process.argv.slice(2));
+  const { command, args } = parseCommand(process.argv.slice(2));
 
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
     throw new UsageError("the GITHUB_TOKEN environment variable is not set");
   }
 
-  const patternText = await readFile(args.pattern, "utf8");
-  const report = await runPlan({
+  const planOptions = {
     login: args.login,
     token,
     from: args.from,
     to: args.to,
-    patternText,
+    patternText: await readFile(args.pattern, "utf8"),
     start: args.start,
     ...(args.artRepo !== undefined && { artRepo: args.artRepo }),
     ...(args.maxPerDay !== undefined && { maxPerDay: args.maxPerDay }),
-  });
-  console.log(report);
+  };
+
+  if (command === "plan") {
+    console.log(await runPlan(planOptions));
+  } else {
+    console.log(
+      await runApply({
+        ...planOptions,
+        artRepo: args.artRepo,
+        name: args.name,
+        email: args.email,
+        yes: args.yes,
+        ...(args.branch !== undefined && { branch: args.branch }),
+      }),
+    );
+  }
 }
 
 main().catch((error: unknown) => {
