@@ -1,5 +1,5 @@
 {
-  "name": "graftgraph",
+  "name": "graphgraft",
   "version": "0.0.0",
   "description": "Draw art on your GitHub contribution graph, working around your real commits.",
   "private": true,

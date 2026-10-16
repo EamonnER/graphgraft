@@ -61,7 +61,7 @@ export async function fetchCalendar(options: FetchCalendarOptions): Promise<DayC
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "User-Agent": "graftgraph",
+      "User-Agent": "graphgraft",
     },
     body: JSON.stringify({
       query: QUERY,

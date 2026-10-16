@@ -3,7 +3,7 @@ export type DayCounts = Record<string, number>;
 
 /**
  * The user's real contributions per day: what GitHub's calendar
- * reports minus the art commits graftgraph itself made on that day.
+ * reports minus the art commits graphgraft itself made on that day.
  *
  * Art commits dated outside the calendar's range are ignored. If a day has more art
  * commits than the calendar counts (e.g. GitHub hasn't refreshed yet, or didn't
